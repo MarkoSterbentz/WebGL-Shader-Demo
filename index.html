@@ -1,0 +1,254 @@
+<html>
+
+<head>
+      <style>
+      body, html { 
+        width: 100%;
+        height: 100%;
+        border: 0px;
+        padding: 0px;
+        margin: 0px;
+      }
+      #gl-canvas {
+        width: 100%;
+        height: 100%;
+      }	
+    </style>
+	<title>The Legend of Zelda</title>
+
+    <!------------------------------------------------------------>
+    <!------------------------ Line shaders ---------------------->
+    <!------------------------------------------------------------>
+
+
+    <script id="line-vshader" type="x-shader/x-vertex">
+        attribute vec4 vPosition;
+        attribute vec4 vColor;
+        varying vec4 fColor;
+        
+        uniform mat4 mvMatrix;
+        uniform mat4 pMatrix;
+        
+        void main() {
+          gl_Position = pMatrix*mvMatrix*vPosition;
+          fColor = vColor;
+        } 
+    </script>
+
+    <script id="line-fshader" type="x-shader/x-fragment">
+      
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+      
+      varying vec4 fColor;
+      
+      void main() {
+        gl_FragColor = fColor;
+      }
+    </script>
+
+
+    <!------------------------------------------------------------>
+    <!---------------------- Sphere shaders ---------------------->
+    <!------------------------------------------------------------>
+
+    <script id="sphere-vshader" type="x-shader/x-vertex">
+      attribute vec4 vPosition;
+      attribute vec4 vNormal;
+      attribute vec4 vColor;
+      varying vec4 fColor;
+      varying highp vec3 vLighting;
+      
+      uniform mat4 mvMatrix;
+      uniform mat4 pMatrix;
+      uniform mat4 nMatrix;
+      
+      void main() {
+        gl_Position = pMatrix*mvMatrix*vPosition;
+
+        highp vec3 ambientColor = vec3(0.6, 0.6, 0.6);
+        highp vec3 lightColor = vec3(0.5, 0.5, 0.75);
+        highp vec3 lightVector = vec3(0.85, 0.8, 0.75);
+
+        highp vec4 tNormal = nMatrix * vNormal;
+        tNormal = normalize(tNormal);
+        highp float directional = max(dot(tNormal.xyz, lightVector), 0.0);
+        vLighting = ambientColor + (lightColor * directional);
+        fColor = vColor;
+      }
+    </script>
+    <script id="sphere-fshader" type="x-shader/x-fragment">
+      
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+      
+      varying vec4 fColor;
+      varying highp vec3 vLighting;
+      
+      void main() {
+        gl_FragColor = vec4(fColor.xyz * vLighting, fColor.a);
+        //gl_FragColor = fColor;
+      }
+    </script>
+
+
+    <!------------------------------------------------------------>
+    <!---------------------- Skybox Shaders ---------------------->
+    <!------------------------------------------------------------>
+	<script  id="skybox-vshader" type="x-shader/x-vertex">
+	     uniform mat4 pMatrix;
+	     uniform mat4 mvMatrix;
+
+	     attribute vec3 coords;
+
+	     varying vec3 vCoords;
+	     void main() {
+	        vec4 eyeCoords = mvMatrix * vec4(coords,1.0);
+	        gl_Position = pMatrix * eyeCoords;
+	        vCoords = coords;
+	     }
+	</script>
+	<script id="skybox-fshader" type="x-shader/x-fragment" >
+	     precision mediump float;
+	     varying vec3 vCoords;
+
+	     uniform samplerCube skybox;
+
+	     void main() {
+	          gl_FragColor = textureCube(skybox, vCoords);
+	     }
+	</script>
+  <!------------------------------------------------------------>
+  <!---------------- Reflective Surface Shaders ---------------->
+  <!------------------------------------------------------------>
+  <script id="reflection-vshader" type="x-shader/x-vertex">
+     uniform mat4 pMatrix;
+     uniform mat4 vMatrix;
+     uniform mat4 mMatrix;
+     uniform vec4 cameraPosition;
+
+     attribute vec4 vPosition;
+     attribute vec4 vNormal;
+
+     varying vec3 fNormal;
+     varying vec3 vectorToCamera;
+
+     void main() {
+        vec4 transformedVertex = mMatrix * vPosition;
+        vectorToCamera = (cameraPosition - transformedVertex).xyz;
+        gl_Position = pMatrix * vMatrix * mMatrix * transformedVertex;
+        fNormal = (mMatrix * vNormal).xyz;
+     }
+</script>
+  <script id="reflection-fshader" type="x-shader/x-fragment">
+      precision mediump float;
+
+      uniform samplerCube skybox;
+      uniform int materialKey;
+
+      varying vec3 fNormal;
+      varying vec3 vectorToCamera;
+
+      void main() {
+
+        vec3 normalizedVectorToCamera = normalize(-vectorToCamera);
+        vec3 normalizedFNormal = normalize(fNormal);
+
+        if (materialKey == 1) {
+            // GOLD REFLECTIVE MATERIAL WITH LIGHTING
+            vec3 reflectionVector = reflect(normalizedVectorToCamera, normalizedFNormal);
+
+            float shininess = 1.0;
+
+            vec3 lightDir = vec3(0.0, 0.0, 1.0);
+
+            vec4 lightAmbient = vec4(1.0, 1.0, 1.0, 1.0);
+            vec4 lightDiffuse = vec4(1.0, 1.0, 1.0, 1.0);
+            vec4 lightSpecular = vec4(1.0, 0.0, 0.0, 1.0);
+
+            vec4 materialAmbient = vec4(0.8, 0.5, 0.0, 1.0);
+            vec4 materialDiffuse = vec4(0.8, 0.5, 0.0, 1.0);
+            vec4 materialSpecular = vec4(1.0, 1.0, 1.0, 1.0);
+
+            vec4 ambientProduct = lightAmbient * materialAmbient;
+            vec4 diffuseProduct = lightDiffuse * materialDiffuse;
+            vec4 specularProduct = lightSpecular * materialSpecular;
+
+            vec4 ambient = ambientProduct;
+
+            // float Kd = max(dot(lightDir, reflectionVector), 0.0);
+            // vec4 diffuse = Kd * diffuseProduct;
+
+            vec4 reflectionColor = textureCube(skybox, reflectionVector);
+            vec4 diffuse = reflectionColor;
+
+            float Ks = pow(max(dot(reflectionVector, lightDir), 0.0), shininess);
+            vec4 specular = Ks * specularProduct;
+
+            if (dot(lightDir, reflectionVector) < 0.0) {
+              specular = vec4(0.0, 0.0, 0.0, 1.0);
+            }
+            vec4 fColor = ambient + diffuse + specular;
+            gl_FragColor = fColor;
+
+        } else if (materialKey == 2) {
+            // MIRROR / STEEL MATERIAL
+            vec3 reflectionVector = reflect(normalizedVectorToCamera, normalizedFNormal);
+            gl_FragColor = textureCube(skybox, reflectionVector);
+
+        } else if (materialKey == 3) {
+            // GLASS MATERIAL
+            vec3 refractionVector = refract(normalizedVectorToCamera, normalizedFNormal, 0.8);
+            vec3 reflectionVector = reflect(normalizedVectorToCamera, normalizedFNormal);
+
+            vec4 reflectionColor = textureCube(skybox, reflectionVector);
+            vec4 refractionColor = textureCube(skybox, refractionVector);
+
+            gl_FragColor = refractionColor* .7 + reflectionColor * .3;
+
+        } else if (materialKey == 4) {
+            // GOOD WITCH BUBBLE
+            vec3 reflectionVector = refract(normalizedVectorToCamera, normalizedFNormal, 0.8);
+            gl_FragColor = vec4(reflectionVector, 1.0);
+
+        } else if (materialKey == 5) {
+            // BLACK MATERIAL LIT WITH RED LIGHT
+            vec3 lightDir = vec3(0.0, 0.0, 1.0);
+            gl_FragColor = vec4(dot(normalizedFNormal, lightDir), 0.0, 0.0, 1.0);
+
+        } else if (materialKey == 6) {
+            // REFLECTED SPECULAR LIGHTING
+            vec3 reflectionVector = reflect(normalizedVectorToCamera, normalizedFNormal);
+            vec3 lightDir = vec3(0.0, 0.0, 1.0);
+            float shininess = 1.0;
+            float Ks = pow(max(dot(reflectionVector, lightDir), 0.0), shininess);
+            gl_FragColor = vec4(Ks, 0.0, 0.0, 1.0);
+
+        } else if (materialKey == 7) {
+            // GLITCH MATERIAL            
+        }
+      }
+</script>
+    <script type="text/javascript" src="./common/webgl-utils.js"></script>
+    <script type="text/javascript" src="./common/initShaders.js"></script>
+    <script type="text/javascript" src="./common/MV.js"></script>
+    <script type="text/javascript" src="./common/axis.js"></script>
+    <script type="text/javascript" src="./common/sphere.js"></script>
+    <script type="text/javascript" src="./common/floor.js"></script>
+    <script type="text/javascript" src="./common/segment.js"></script>
+    <script type="text/javascript" src="./common/skybox.js"></script>
+    <script type="text/javascript" src="./common/triforce.js"></script>
+    <script type="text/javascript" src="./common/yawPitchCamera.js"></script>
+	  <script type="text/javascript" src="main.js"></script>
+
+</script>
+</head>
+
+
+<body>
+    <canvas id="gl-canvas">
+    Oops ... your browser doesn't support the HTML5 canvas element</canvas>
+</body>
+</html>
